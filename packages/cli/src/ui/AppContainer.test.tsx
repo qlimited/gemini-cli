@@ -87,6 +87,18 @@ vi.mock('@google/gemini-cli-core', async (importOriginal) => {
     FileDiscoveryService: vi.fn().mockImplementation(() => ({
       initialize: vi.fn(),
     })),
+    clearScreen: vi.fn(),
+    clearScrollback: vi.fn(),
+    detectTerminalEnvironment: vi.fn().mockReturnValue({}),
+    getTerminalCapabilities: vi.fn().mockReturnValue({
+      capabilities: {
+        supportsAltBuffer: true,
+        supportsMouse: true,
+        supportsReliableBackbufferClear: true,
+      },
+      warnings: [],
+      reasons: {},
+    }),
     startupProfiler: {
       flush: vi.fn(),
       start: vi.fn(),
@@ -155,6 +167,12 @@ vi.mock('./hooks/useFocus.js');
 vi.mock('./hooks/useBracketedPaste.js');
 vi.mock('./hooks/useLoadingIndicator.js');
 vi.mock('./hooks/useSuspend.js');
+vi.mock('./hooks/useTerminalCapabilities.js', () => ({
+  useTerminalCapabilities: vi.fn(),
+}));
+vi.mock('./hooks/useAlternateBuffer.js', () => ({
+  useAlternateBuffer: vi.fn(),
+}));
 vi.mock('./hooks/useFolderTrust.js');
 vi.mock('./hooks/useIdeTrustListener.js');
 vi.mock('./hooks/useMessageQueue.js');
@@ -223,6 +241,8 @@ import { useSessionStats } from './contexts/SessionContext.js';
 import { useTextBuffer } from './components/shared/text-buffer.js';
 import { useLogger } from './hooks/useLogger.js';
 import { useLoadingIndicator } from './hooks/useLoadingIndicator.js';
+import { useTerminalCapabilities } from './hooks/useTerminalCapabilities.js';
+import { useAlternateBuffer } from './hooks/useAlternateBuffer.js';
 import { useInputHistoryStore } from './hooks/useInputHistoryStore.js';
 import { useKeypress, type Key } from './hooks/useKeypress.js';
 import * as useKeypressModule from './hooks/useKeypress.js';
@@ -234,6 +254,7 @@ import {
   writeToStdout,
   enableMouseEvents,
   disableMouseEvents,
+  clearScreen,
 } from '@google/gemini-cli-core';
 import { type ExtensionManager } from '../config/extension-manager.js';
 import {
@@ -304,6 +325,8 @@ describe('AppContainer State Management', () => {
   const mockedUseTextBuffer = useTextBuffer as Mock;
   const mockedUseLogger = useLogger as Mock;
   const mockedUseLoadingIndicator = useLoadingIndicator as Mock;
+  const mockedUseTerminalCapabilities = useTerminalCapabilities as Mock;
+  const mockedUseAlternateBuffer = useAlternateBuffer as Mock;
   const mockedUseSuspend = useSuspend as Mock;
   const mockedUseInputHistoryStore = useInputHistoryStore as Mock;
   const mockedUseHookDisplayState = useHookDisplayState as Mock;
@@ -441,6 +464,12 @@ describe('AppContainer State Management', () => {
     mockedUseSuspend.mockReturnValue({
       handleSuspend: vi.fn(),
     });
+    mockedUseTerminalCapabilities.mockReturnValue({
+      supportsAltBuffer: true,
+      supportsMouse: true,
+      supportsReliableBackbufferClear: true,
+    });
+    mockedUseAlternateBuffer.mockReturnValue(false);
     mockedUseHookDisplayState.mockReturnValue([]);
     mockedUseTerminalTheme.mockReturnValue(undefined);
     mockedUseShellInactivityStatus.mockReturnValue({
@@ -2808,6 +2837,7 @@ describe('AppContainer State Management', () => {
       vi.spyOn(mockConfig, 'getUseAlternateBuffer').mockReturnValue(
         isAlternateMode,
       );
+      mockedUseAlternateBuffer.mockReturnValue(isAlternateMode);
 
       // Update settings for this test run
       const defaultMergedSettings = mergeSettings({}, {}, {}, {}, true);
@@ -3479,6 +3509,7 @@ describe('AppContainer State Management', () => {
 
       // Reset mock stdout to clear any initial writes
       mocks.mockStdout.write.mockClear();
+      vi.mocked(clearScreen).mockClear();
 
       // Submit
       await act(async () => capturedUIActions.handleFinalSubmit('test prompt'));
@@ -3486,9 +3517,7 @@ describe('AppContainer State Management', () => {
       // Should be reset
       expect(capturedUIState.constrainHeight).toBe(true);
       // Should refresh static (which clears terminal in non-alternate buffer)
-      expect(mocks.mockStdout.write).toHaveBeenCalledWith(
-        ansiEscapes.clearTerminal,
-      );
+      expect(clearScreen).toHaveBeenCalled();
       unmount!();
     });
 
@@ -3499,6 +3528,7 @@ describe('AppContainer State Management', () => {
       vi.mocked(checkPermissions).mockResolvedValue([]);
 
       vi.spyOn(mockConfig, 'getUseAlternateBuffer').mockReturnValue(true);
+      mockedUseAlternateBuffer.mockReturnValue(true);
 
       let unmount: () => void;
       await act(async () => {
@@ -3733,6 +3763,7 @@ describe('AppContainer State Management', () => {
       } as unknown as LoadedSettings;
 
       vi.spyOn(mockConfig, 'getUseAlternateBuffer').mockReturnValue(true);
+      mockedUseAlternateBuffer.mockReturnValue(true);
 
       let unmount: () => void;
       await act(async () => {

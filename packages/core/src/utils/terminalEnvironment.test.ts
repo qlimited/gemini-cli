@@ -215,5 +215,28 @@ describe('terminalEnvironment', () => {
         }),
       );
     });
+
+    it('should return multiple warnings when multiple issues are detected', () => {
+      const env = {
+        ...defaultEnv,
+        isWindows10: true,
+        isJetBrains: true,
+        supportsTrueColor: false,
+        supports256Colors: true,
+      };
+
+      const warnings = getTerminalWarnings(env, { isAlternateBuffer: true });
+
+      expect(warnings).toContainEqual(
+        expect.objectContaining({ id: 'windows-10' }),
+      );
+      expect(warnings).toContainEqual(
+        expect.objectContaining({ id: 'jetbrains-terminal' }),
+      );
+      expect(warnings).toContainEqual(
+        expect.objectContaining({ id: 'true-color' }),
+      );
+      expect(warnings.length).toBe(3);
+    });
   });
 });

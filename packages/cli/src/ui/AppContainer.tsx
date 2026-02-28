@@ -63,6 +63,7 @@ import {
   saveApiKey,
   debugLogger,
   coreEvents,
+  clearScreen,
   CoreEvent,
   refreshServerHierarchicalMemory,
   flattenMemory,
@@ -103,11 +104,11 @@ import {
   useOverflowActions,
   useOverflowState,
 } from './contexts/OverflowContext.js';
+import { useAlternateBuffer } from './hooks/useAlternateBuffer.js';
 import { useConsoleMessages } from './hooks/useConsoleMessages.js';
 import { useTerminalSize } from './hooks/useTerminalSize.js';
 import { calculatePromptWidths } from './components/InputPrompt.js';
 import { calculateMainAreaWidth } from './utils/ui-sizing.js';
-import ansiEscapes from 'ansi-escapes';
 import { basename } from 'node:path';
 import { computeTerminalTitle } from '../utils/windowTitle.js';
 import { useTextBuffer } from './components/shared/text-buffer.js';
@@ -231,7 +232,7 @@ export const AppContainer = (props: AppContainerProps) => {
   });
 
   useMemoryMonitor(historyManager);
-  const isAlternateBuffer = config.getUseAlternateBuffer();
+  const isAlternateBuffer = useAlternateBuffer();
   const [corgiMode, setCorgiMode] = useState(false);
   const [forceRerenderKey, setForceRerenderKey] = useState(0);
   const [debugMessage, setDebugMessage] = useState<string>('');
@@ -551,7 +552,10 @@ export const AppContainer = (props: AppContainerProps) => {
   const { consoleMessages, clearConsoleMessages: clearConsoleMessagesState } =
     useConsoleMessages();
 
-  const mainAreaWidth = calculateMainAreaWidth(terminalWidth, config);
+  const mainAreaWidth = calculateMainAreaWidth(
+    terminalWidth,
+    isAlternateBuffer,
+  );
   // Derive widths for InputPrompt using shared helper
   const { inputWidth, suggestionsWidth } = useMemo(() => {
     const { inputWidth, suggestionsWidth } =
@@ -599,10 +603,10 @@ export const AppContainer = (props: AppContainerProps) => {
 
   const refreshStatic = useCallback(() => {
     if (!isAlternateBuffer) {
-      stdout.write(ansiEscapes.clearTerminal);
+      clearScreen();
     }
     setHistoryRemountKey((prev) => prev + 1);
-  }, [setHistoryRemountKey, isAlternateBuffer, stdout]);
+  }, [setHistoryRemountKey, isAlternateBuffer]);
 
   const shouldUseAlternateScreen = shouldEnterAlternateScreen(
     isAlternateBuffer,
