@@ -641,8 +641,7 @@ export class GeminiClient {
     } else if (loopResult.count === 1) {
       const feedback = [
         {
-          text: `System: A loop has been detected. Details: ${loopResult.detail || 'Repetitive patterns identified'}. 
-Please take a step back, analyze your previous actions, and think about the problem again from a different perspective. Ensure you are making forward progress toward the goal and avoid repeating the same tool calls or responses without new results.`,
+          text: `System: Potential loop detected. Details: ${loopResult.detail || 'Repetitive patterns identified'}. Please take a step back and confirm you're making forward progress. If not, take a step back, analyze your previous actions and rethink how you're approaching the problem. Avoid repeating the same tool calls or responses without new results.`,
         },
       ];
       // Recursive call with feedback
@@ -714,8 +713,7 @@ Please take a step back, analyze your previous actions, and think about the prob
         controller.abort();
         const feedback = [
           {
-            text: `System: A loop has been detected. Details: ${loopResult.detail || 'Repetitive patterns identified'}. 
-Please take a step back, analyze your previous actions, and think about the problem again from a different perspective. Ensure you are making forward progress toward the goal and avoid repeating the same tool calls or responses without new results.`,
+            text: `System: Potential loop detected. Details: ${loopResult.detail || 'Repetitive patterns identified'}. Please take a step back and confirm you're making forward progress. If not, take a step back, analyze your previous actions and rethink how you're approaching the problem. Avoid repeating the same tool calls or responses without new results.`,
           },
         ];
         // Recursive call with feedback
