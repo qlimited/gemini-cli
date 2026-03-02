@@ -4,13 +4,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { getToolGroupBorderAppearance } from './borderStyles.js';
 import { CoreToolCallStatus } from '@google/gemini-cli-core';
 import { theme } from '../semantic-colors.js';
 import type { IndividualToolCallDisplay } from '../types.js';
 import { renderWithProviders } from '../../test-utils/render.js';
 import { MainContent } from '../components/MainContent.js';
+import { Text } from 'ink';
+
+vi.mock('../components/CliSpinner.js', () => ({
+  CliSpinner: () => <Text>⊶</Text>,
+}));
 
 describe('getToolGroupBorderAppearance', () => {
   it('should use warning color for pending non-shell tools', () => {
