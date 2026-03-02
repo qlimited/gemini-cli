@@ -1580,6 +1580,16 @@ const SETTINGS_SCHEMA = {
             description: 'The currently selected authentication type.',
             showInDialog: false,
           },
+          activeAccount: {
+            type: 'string',
+            label: 'Active Account',
+            category: 'Security',
+            requiresRestart: false,
+            default: undefined as string | undefined,
+            description:
+              'The email address of the currently active Google account (multi-account support).',
+            showInDialog: false,
+          },
           enforcedType: {
             type: 'string',
             label: 'Enforced Auth Type',

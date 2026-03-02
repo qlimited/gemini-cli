@@ -145,4 +145,67 @@ export class UserAccountManager {
 
     await fsp.writeFile(filePath, JSON.stringify(accounts, null, 2), 'utf-8');
   }
+
+  /**
+   * Switch the active account to `email`.
+   *
+   * Unlike `cacheGoogleAccount`, this does **not** add the previous active
+   * account to the `old` list again when it is already known — it merely
+   * updates which account is marked as active.  The previous active account
+   * is still moved to `old` so that we keep the full list intact.
+   */
+  async setActiveAccount(email: string): Promise<void> {
+    const filePath = this.getGoogleAccountsCachePath();
+    await fsp.mkdir(path.dirname(filePath), { recursive: true });
+    const accounts = await this.readAccounts(filePath);
+
+    // Move current active to the old list if it's a different account
+    if (accounts.active && accounts.active !== email) {
+      if (!accounts.old.includes(accounts.active)) {
+        accounts.old.push(accounts.active);
+      }
+    }
+
+    // Remove the target email from the old list so there is no duplicate
+    accounts.old = accounts.old.filter((e) => e !== email);
+    accounts.active = email;
+
+    await fsp.writeFile(filePath, JSON.stringify(accounts, null, 2), 'utf-8');
+  }
+
+  /**
+   * Return all known accounts as `{ active, all }`.
+   *
+   * `all` is ordered with the active account first, followed by the rest.
+   */
+  getAllAccounts(): { active: string | null; all: string[] } {
+    const filePath = this.getGoogleAccountsCachePath();
+    const accounts = this.readAccountsSync(filePath);
+    const all = accounts.active
+      ? [
+          accounts.active,
+          ...accounts.old.filter((e) => e !== accounts.active),
+        ]
+      : [...accounts.old];
+    return { active: accounts.active, all };
+  }
+
+  /**
+   * Remove a specific account from both `active` and `old` lists.
+   *
+   * If `email` is the active account, the next entry from `old` is promoted
+   * to active (or `active` becomes `null` if `old` is empty).
+   */
+  async removeAccount(email: string): Promise<void> {
+    const filePath = this.getGoogleAccountsCachePath();
+    const accounts = await this.readAccounts(filePath);
+
+    if (accounts.active === email) {
+      accounts.active = accounts.old.length > 0 ? accounts.old.pop()! : null;
+    } else {
+      accounts.old = accounts.old.filter((e) => e !== email);
+    }
+
+    await fsp.writeFile(filePath, JSON.stringify(accounts, null, 2), 'utf-8');
+  }
 }

@@ -50,6 +50,7 @@ export * from './fallback/types.js';
 
 export * from './code_assist/codeAssist.js';
 export * from './code_assist/oauth2.js';
+export * from './code_assist/oauth-credential-storage.js';
 export * from './code_assist/server.js';
 export * from './code_assist/setup.js';
 export * from './code_assist/types.js';

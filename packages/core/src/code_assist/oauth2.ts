@@ -155,7 +155,12 @@ async function initOauthClient(
 
   client.on('tokens', async (tokens: Credentials) => {
     if (useEncryptedStorage) {
-      await OAuthCredentialStorage.saveCredentials(tokens);
+      // Also persist under the email-specific key if we already know the email
+      const activeEmail = userAccountManager.getCachedGoogleAccount();
+      await OAuthCredentialStorage.saveCredentials(
+        tokens,
+        activeEmail ?? undefined,
+      );
     } else {
       await cacheCredentials(tokens);
     }
@@ -628,7 +633,9 @@ async function fetchCachedCredentials(): Promise<
 > {
   const useEncryptedStorage = getUseEncryptedStorageFlag();
   if (useEncryptedStorage) {
-    return OAuthCredentialStorage.loadCredentials();
+    // Pass the active account's email so we load the right credential slot
+    const activeEmail = userAccountManager.getCachedGoogleAccount();
+    return OAuthCredentialStorage.loadCredentials(activeEmail ?? undefined);
   }
 
   const pathsToTry = [
@@ -657,11 +664,20 @@ export function clearOauthClientCache() {
   oauthClientPromises.clear();
 }
 
+/**
+ * Clear credentials for the **current** active account only.
+ *
+ * Email-specific credential slots for *other* accounts are left untouched.
+ * Use `clearAllCachedCredentialFiles` to remove everything.
+ */
 export async function clearCachedCredentialFile() {
   try {
     const useEncryptedStorage = getUseEncryptedStorageFlag();
+    const activeEmail = userAccountManager.getCachedGoogleAccount();
+
     if (useEncryptedStorage) {
-      await OAuthCredentialStorage.clearCredentials();
+      // Remove the email-specific key (if any) AND the legacy main-account key
+      await OAuthCredentialStorage.clearCredentials(activeEmail ?? undefined);
     } else {
       await fs.rm(Storage.getOAuthCredsPath(), { force: true });
     }
@@ -672,6 +688,88 @@ export async function clearCachedCredentialFile() {
   } catch (e) {
     debugLogger.warn('Failed to clear cached credentials:', e);
   }
+}
+
+/**
+ * Clear ALL stored credentials across every known account.
+ */
+export async function clearAllCachedCredentialFiles() {
+  try {
+    const useEncryptedStorage = getUseEncryptedStorageFlag();
+    if (useEncryptedStorage) {
+      await OAuthCredentialStorage.clearAllCredentials();
+    } else {
+      await fs.rm(Storage.getOAuthCredsPath(), { force: true });
+    }
+    await userAccountManager.clearCachedGoogleAccount();
+    clearOauthClientCache();
+  } catch (e) {
+    debugLogger.warn('Failed to clear all cached credentials:', e);
+  }
+}
+
+/**
+ * Prepare for a new-account OAuth login without discarding the existing
+ * account's email-specific credentials.
+ *
+ * Steps:
+ *  1. Ensure the current account's credentials are saved under its email key.
+ *  2. Clear the `main-account` key (so the OAuth flow starts fresh).
+ *  3. Clear the in-memory OAuth client cache.
+ *
+ * After calling this, the caller should trigger a regular login flow.
+ */
+export async function prepareForNewAccountLogin(): Promise<void> {
+  const useEncryptedStorage = getUseEncryptedStorageFlag();
+  const currentEmail = userAccountManager.getCachedGoogleAccount();
+
+  if (useEncryptedStorage && currentEmail) {
+    // Make sure current account has an email-specific key before we wipe
+    // the main-account slot.
+    const hasEmailKey =
+      (await OAuthCredentialStorage.listAccounts()).includes(currentEmail);
+    if (!hasEmailKey) {
+      // Migrate: copy main-account creds to email-specific key
+      const mainCreds = await OAuthCredentialStorage.loadCredentials();
+      if (mainCreds) {
+        await OAuthCredentialStorage.saveCredentials(mainCreds, currentEmail);
+      }
+    }
+    // Clear only the main-account slot so the new OAuth flow starts fresh
+    await OAuthCredentialStorage.clearMainAccountOnly();
+  } else if (!useEncryptedStorage) {
+    // File-based storage doesn't support multi-account; wipe everything
+    await fs.rm(Storage.getOAuthCredsPath(), { force: true });
+  }
+
+  // Force a full re-authentication on next API call
+  clearOauthClientCache();
+}
+
+/**
+ * Switch the active Google account to `email`.
+ *
+ * The target account must already have stored credentials (obtained via a
+ * previous successful login).  After switching, the in-memory OAuth cache is
+ * cleared so the next API call picks up the new account's tokens.
+ */
+export async function switchToAccount(email: string): Promise<void> {
+  await userAccountManager.setActiveAccount(email);
+  clearOauthClientCache();
+}
+
+/**
+ * Return all known Google accounts as `{ active, all }`.
+ */
+export function getStoredAccounts(): { active: string | null; all: string[] } {
+  return userAccountManager.getAllAccounts();
+}
+
+/**
+ * Return the currently active Google account email, or null if unknown.
+ */
+export function getCachedGoogleAccount(): string | null {
+  return userAccountManager.getCachedGoogleAccount();
 }
 
 async function fetchAndCacheUserInfo(client: OAuth2Client): Promise<void> {
@@ -702,6 +800,22 @@ async function fetchAndCacheUserInfo(client: OAuth2Client): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const userInfo = await response.json();
     await userAccountManager.cacheGoogleAccount(userInfo.email);
+
+    // ── Multi-account migration ───────────────────────────────────────────
+    // Now that we know the authenticated email, make sure credentials are
+    // persisted under the email-specific key.  This is a no-op once the key
+    // exists, so it's safe to call on every successful credential validation.
+    const useEncryptedStorage = getUseEncryptedStorageFlag();
+    if (useEncryptedStorage && userInfo.email) {
+      const storedAccounts = await OAuthCredentialStorage.listAccounts();
+      if (!storedAccounts.includes(userInfo.email)) {
+        const mainCreds = await OAuthCredentialStorage.loadCredentials();
+        if (mainCreds) {
+          await OAuthCredentialStorage.saveCredentials(mainCreds, userInfo.email);
+        }
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────
   } catch (error) {
     debugLogger.log('Error retrieving user info:', error);
   }
